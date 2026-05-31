@@ -1,0 +1,10 @@
+.{
+    .name = .omoshiroi,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{""},
+    .dependencies = .{
+        .clap = .{ .path = "vendor/zig-clap" },
+    },
+    .fingerprint = 0xb0673a7df8239dc0,
+}
