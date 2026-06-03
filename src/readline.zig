@@ -9,6 +9,7 @@ const c = struct {
     extern fn rl_completion_matches([*:0]const u8, ?*const CompentryFunc) ?[*:null]?[*:0]u8;
     extern fn rl_bind_key(c_int, ?*const CommandFunc) c_int;
     extern fn rl_complete(c_int, c_int) c_int;
+    extern fn rl_insert(c_int, c_int) c_int;
 
     extern var rl_attempted_completion_function: ?*const CompletionFunc;
     extern var rl_attempted_completion_over: c_int;
@@ -32,6 +33,7 @@ pub fn bindKey(key: i32, function: *const CommandFunc) void {
 }
 
 pub const complete = c.rl_complete;
+pub const insert = c.rl_insert;
 
 pub fn setAttemptedCompletionFunction(value: CompletionFunc) void {
     c.rl_attempted_completion_function = value;

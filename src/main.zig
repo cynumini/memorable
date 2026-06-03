@@ -1,45 +1,12 @@
 const std = @import("std");
-const sqlite3 = @import("sqlite3.zig");
-const rl = @import("readline.zig");
+
 const clap = @import("clap");
 
-// fn getDefaultPrng(io: std.Io) std.Random.DefaultPrng {
-//     const seed: u64 = @intCast(std.Io.Timestamp.now(io, .real).nanoseconds);
-//     return std.Random.DefaultPrng.init(seed);
-// }
+const elo_command = @import("elo-command.zig");
+const p = @import("prompt.zig");
+const sqlite3 = @import("sqlite3.zig");
 
-// fn sql_entry_func(text: [*:0]const u8, index: c_int) ?[*:0]u8 {
-//     if (index == 0) {
-//         sql_entry_func_stmt.?.reset();
-//         const parameter = std.fmt.allocPrintSentinel(
-//             arena,
-//             "{s}%",
-//             .{text},
-//             0,
-//         ) catch unreachable;
-//         sql_entry_func_stmt.bindText(1, parameter, .transient);
-//     }
-//     const result = sql_entry_func_stmt.step();
-//     if (result == .row) {
-//         const value = sql_entry_func_stmt.columnText(0);
-//         return std.c.strdup(value);
-//     } else if (result == .done) {
-//         return null;
-//     }
-//     unreachable;
-// }
-
-// fn sql_completion_function(text: [*c]const u8, start: c_int, end: c_int) callconv(.c) [*c][*c]u8 {
-//     _ = start;
-//     _ = end;
-//     _ = rl.bindKey('\t', rl.complete);
-//     rl.rl_attempted_completion_over = 1;
-//     rl.rl_completion_append_character = 0;
-//     rl.rl_completer_word_break_characters = "";
-//     return rl.completionMatches(text, sql_entry_func);
-// }
-
-// var sql_entry_func_stmt: ?*sqlite3.Statement = null;
+const MainCommands = enum { add, elo, league, log, stats };
 
 const main_params = clap.parseParamsComptime(
     \\-h, --help            Display this help and exit.
@@ -48,13 +15,6 @@ const main_params = clap.parseParamsComptime(
     \\
 );
 
-const Commands = enum { add, elo, log, stats };
-
-const main_parsers = .{
-    .command = clap.parsers.enumeration(Commands),
-    .path = clap.parsers.string,
-};
-
 fn mainHelp(writer: *std.Io.Writer, name: []const u8) !void {
     try writer.print("uage: {s} ", .{name});
     try clap.usage(writer, clap.Help, &main_params);
@@ -62,26 +22,27 @@ fn mainHelp(writer: *std.Io.Writer, name: []const u8) !void {
     try clap.help(writer, clap.Help, &main_params, .{});
     try writer.print(
         \\Available commands:
-        \\    add   - Add media to the database
-        \\    elo   - Play elo matches between media
-        \\    log   - Log media
-        \\    stats - Show stats
+        \\    add    - Add media to the database
+        \\    elo    - Play elo matches between media
+        \\    league - Add a new league
+        \\    log    - Log media
+        \\    stats  - Show stats
         \\
     , .{});
     try writer.flush();
 }
 
 const add_params = clap.parseParamsComptime(
-    \\-h, --help           Display this help and exit.
-    \\-n, --name <str>     Media title.
-    \\-k, --kind <str>     Media type (Anime, Manga, LN, VN, Game, ...).
-    \\-r, --release <date> Original release date
-    \\-j, --japanese       Media was originally released in Japanese?
-    \\-s, --state <state>  Status: new, repeat, completed.
-    \\-o, --note <str>     Additional notes or comments.
+    \\-h, --help              Display this help and exit.
+    \\-n, --name <str>        Media title.
+    \\-k, --kind <str>        Media type (Anime, Manga, LN, VN, Game, ...).
+    \\-r, --release <date>    Original release date
+    \\-j, --japanese <answer> Media was originally released in Japanese?
+    \\-s, --state <state>     Status: new, repeat, completed.
+    \\-o, --note <str>        Additional notes or comments.
 );
 
-fn addUsage(writer: *std.Io.Writer, name: []const u8) !void {
+fn addHelp(writer: *std.Io.Writer, name: []const u8) !void {
     try writer.print("uage: {s} add ", .{name});
     try clap.usage(writer, clap.Help, &add_params);
     try writer.print("\n\n", .{});
@@ -89,8 +50,22 @@ fn addUsage(writer: *std.Io.Writer, name: []const u8) !void {
     try writer.flush();
 }
 
+const league_params = clap.parseParamsComptime(
+    \\-h, --help Display this help and exit.
+    \\<str>      Name of the league
+    \\<str>      SQL query
+);
+
+fn leagueHelp(writer: *std.Io.Writer, name: []const u8) !void {
+    try writer.print("uage: {s} league ", .{name});
+    try clap.usage(writer, clap.Help, &league_params);
+    try writer.print("\n", .{});
+    try clap.help(writer, clap.Help, &league_params, .{});
+    try writer.flush();
+}
+
 fn migrate(database: *sqlite3.SQLite3) void {
-    const version = database.fetchOne(i32, "PRAGMA user_version;");
+    const version = database.fetchOne(i32, "PRAGMA user_version;", .{});
     if (version == 0) {
         std.log.info("Creating the database", .{});
         const sql =
@@ -128,49 +103,35 @@ fn migrate(database: *sqlite3.SQLite3) void {
         ;
         database.exec(sql, null, null);
     }
-}
-
-var prompt_sql_stmt: ?*sqlite3.Statement = null;
-var prompt_sql_allocator: ?std.mem.Allocator = null;
-
-fn promptSQLCompentryFunc(text: [*:0]const u8, index: c_int) callconv(.c) ?[*:0]u8 {
-    if (index == 0) {
-        prompt_sql_stmt.?.reset();
-        const value = std.fmt.allocPrintSentinel(
-            prompt_sql_allocator.?,
-            "{s}%",
-            .{text},
-            0,
-        ) catch unreachable;
-        prompt_sql_stmt.?.bindText(1, value, .transient);
+    if (version == 1) {
+        std.log.info("Migrate the database to version 2", .{});
+        const sql =
+            \\BEGIN;
+            \\CREATE TABLE league (
+            \\    id   INTEGER NOT NULL UNIQUE,
+            \\    name TEXT NOT NULL UNIQUE,
+            \\    sql  TEXT NOT NULL UNIQUE,
+            \\    PRIMARY KEY(id AUTOINCREMENT)
+            \\) STRICT;
+            \\INSERT INTO league (id, name, sql) VALUES (1, "all", "media.state != 2");
+            \\INSERT INTO league (id, name, sql) VALUES (2, "japanese", "media.state != 2 AND media.japanese = 1");
+            \\INSERT INTO league (id, name, sql) VALUES (3, "english", "media.state != 2 AND media.japanese = 0");
+            \\CREATE TABLE rank (
+            \\    league_id INTEGER NOT NULL,
+            \\    media_id  INTEGER NOT NULL,
+            \\    rank      INTEGER NOT NULL,
+            \\    UNIQUE(league_id,media_id),
+            \\    FOREIGN KEY(league_id) REFERENCES league(id),
+            \\    FOREIGN KEY(media_id) REFERENCES media(id)
+            \\) STRICT;
+            \\INSERT INTO rank (league_id, media_id, rank)
+            \\       SELECT 1, id, rank FROM media;
+            \\ALTER TABLE media DROP COLUMN rank;
+            \\PRAGMA user_version = 2;
+            \\COMMIT;
+        ;
+        database.exec(sql, null, null);
     }
-    const result = prompt_sql_stmt.?.step();
-    if (result == .row) {
-        return std.heap.c_allocator.dupeZ(u8, prompt_sql_stmt.?.column([:0]const u8, 0)) catch unreachable;
-    } else if (result == .done) {
-        return null;
-    } else unreachable;
-}
-
-fn promptSQLCompletionFunc(text: [*:0]const u8, _: c_int, _: c_int) callconv(.c) ?[*:null]?[*:0]u8 {
-    rl.bindKey('\t', rl.complete);
-    rl.setAttemptedCompletionOver(1);
-    rl.setCompletionAppendCharacter(0);
-    rl.setCompleterWordBreakCharacters("");
-    return rl.completionMatches(text, promptSQLCompentryFunc);
-}
-
-fn promptSQL(allocator: std.mem.Allocator, prompt: [:0]const u8, db: *sqlite3.SQLite3, sql: [:0]const u8) ![]const u8 {
-    var scratch_arena = std.heap.ArenaAllocator.init(allocator);
-    defer scratch_arena.deinit();
-
-    prompt_sql_allocator = scratch_arena.allocator();
-
-    prompt_sql_stmt = db.prepare(sql);
-    defer prompt_sql_stmt.?.finalize();
-    rl.setAttemptedCompletionFunction(promptSQLCompletionFunc);
-    const string = try rl.readline(allocator, prompt);
-    return std.mem.trim(u8, string, " ");
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -180,6 +141,11 @@ pub fn main(init: std.process.Init) !void {
     defer iter.deinit();
 
     const program_name = iter.next().?;
+
+    const main_parsers = .{
+        .command = clap.parsers.enumeration(MainCommands),
+        .path = clap.parsers.string,
+    };
 
     var diag = clap.Diagnostic{};
     var res = clap.parseEx(clap.Help, &main_params, main_parsers, &iter, .{
@@ -217,28 +183,26 @@ pub fn main(init: std.process.Init) !void {
 
     migrate(database);
 
-    //     var prng = getDefaultPrng(init.io);
-    //     const random = prng.random();
-    //     _ = random;
-
     if (res.positionals[0]) |command| {
         switch (command) {
             .add => {
                 const State = enum { new, repeat, completed };
-                const parsers = comptime .{
+                const Answer = enum { y, n };
+                const add_parsers = .{
                     .str = clap.parsers.string,
                     .date = clap.parsers.string,
                     .state = clap.parsers.enumeration(State),
+                    .answer = clap.parsers.enumeration(Answer),
                 };
                 var sub_res = clap.parseEx(
                     clap.Help,
                     &add_params,
-                    &parsers,
+                    &add_parsers,
                     &iter,
                     .{ .diagnostic = &diag, .allocator = init.gpa },
                 ) catch |err| {
                     if (err == error.InvalidArgument) {
-                        try addUsage(&writer.interface, program_name);
+                        try addHelp(&writer.interface, program_name);
                         return;
                     }
                     try diag.reportToFile(init.io, .stderr(), err);
@@ -247,30 +211,112 @@ pub fn main(init: std.process.Init) !void {
                 defer sub_res.deinit();
 
                 if (sub_res.args.help != 0) {
-                    try addUsage(&writer.interface, program_name);
+                    try addHelp(&writer.interface, program_name);
                     return;
                 }
 
-                const name = try promptSQL(
-                    init.gpa,
+                var scratch_arena = std.heap.ArenaAllocator.init(init.gpa);
+                defer scratch_arena.deinit();
+
+                const gpa = scratch_arena.allocator();
+
+                const name = sub_res.args.name orelse try p.promptSQL(
+                    gpa,
                     "Name: ",
                     database,
                     "SELECT name FROM media WHERE name LIKE ?",
                 );
-                defer init.gpa.free(name);
-                const kind = try promptSQL(
-                    init.gpa,
+
+                const kind = sub_res.args.kind orelse try p.promptSQL(
+                    gpa,
                     "Kind: ",
                     database,
                     "SELECT DISTINCT kind FROM media WHERE kind LIKE ?",
                 );
-                defer init.gpa.free(kind);
 
-                std.debug.print("{s}\n", .{name});
+                const release =
+                    if (sub_res.args.release) |r| (try p.textToISODate(
+                        gpa,
+                        r,
+                    )).? else try p.promptDate(gpa, "Release: ");
+
+                const japanese = blk: {
+                    var result: ?bool = null;
+                    if (sub_res.args.japanese) |j| {
+                        result = j == .y;
+                    }
+                    break :blk result orelse try p.promptCheck(
+                        gpa,
+                        "Will I consume it in Japanese? (y/n): ",
+                    );
+                };
+
+                const state: State = blk: {
+                    var result: ?State = sub_res.args.state;
+                    if (result) |r| break :blk r;
+                    result = State.new;
+                    if (try p.promptCheck(gpa, "Completed? (y/n): "))
+                        result = if (try p.promptCheck(
+                            gpa,
+                            "Want to re-experience? (y/n): ",
+                        )) .repeat else .completed;
+                    break :blk result.?;
+                };
+
+                const note: ?[]const u8 = blk: {
+                    const result = sub_res.args.note orelse try p.prompt(
+                        gpa,
+                        "Note: ",
+                        true,
+                    );
+                    break :blk if (result.len == 0) null else result;
+                };
+
+                database.execOne(
+                    \\INSERT INTO media (name, kind, release, japanese, state, note)
+                    \\       VALUES (?, ?, ?, ?, ?, ?)
+                , .{ name, kind, release, japanese, state, note });
             },
-            .elo => {},
+            .elo => try elo_command.mainElo(
+                init,
+                &iter,
+                program_name,
+                &writer.interface,
+                database,
+            ),
+            .league => {
+                var sub_res = clap.parseEx(
+                    clap.Help,
+                    &league_params,
+                    clap.parsers.default,
+                    &iter,
+                    .{ .diagnostic = &diag, .allocator = init.gpa },
+                ) catch |err| {
+                    if (err == error.InvalidArgument) {
+                        try leagueHelp(&writer.interface, program_name);
+                        return;
+                    }
+                    try diag.reportToFile(init.io, .stderr(), err);
+                    return err;
+                };
+                defer sub_res.deinit();
+
+                if (sub_res.args.help != 0 or sub_res.positionals[0] == null or sub_res.positionals[1] == null) {
+                    try leagueHelp(&writer.interface, program_name);
+                    return;
+                }
+
+                const name: []const u8 = sub_res.positionals[0].?;
+                const sql: []const u8 = sub_res.positionals[1].?;
+
+                database.execOne("INSERT INTO league (name, sql) VALUES (?, ?)", .{ name, sql });
+            },
             .log => {},
             .stats => {},
         }
     }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
