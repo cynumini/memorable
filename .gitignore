@@ -11,8 +11,12 @@
 
 .zig-cache/
 zig-out/
+zig-pkg
 /release/
 /debug/
 /build/
 /build-*/
 /docgen_tmp/
+
+# project specific
+omoshiroi.db

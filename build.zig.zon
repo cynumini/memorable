@@ -2,9 +2,12 @@
     .name = .omoshiroi,
     .version = "0.0.1",
     .minimum_zig_version = "0.16.0",
-    .paths = .{""},
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
     .dependencies = .{
-        .clap = .{ .path = "vendor/zig-clap" },
+        .clap = .{
+            .hash = "clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5",
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.12.0.tar.gz",
+        },
     },
     .fingerprint = 0xb0673a7df8239dc0,
 }
