@@ -247,7 +247,8 @@ pub fn main(init: std.process.Init) !void {
                     }
                     break :blk result orelse try p.promptCheck(
                         gpa,
-                        "Will I consume it in Japanese? (y/n): ",
+                        "Will I consume it in Japanese? (Y/n): ",
+                        .{ .default = true, .default_value = true },
                     );
                 };
 
@@ -255,10 +256,11 @@ pub fn main(init: std.process.Init) !void {
                     var result: ?State = sub_res.args.state;
                     if (result) |r| break :blk r;
                     result = State.new;
-                    if (try p.promptCheck(gpa, "Completed? (y/n): "))
+                    if (try p.promptCheck(gpa, "Completed? (y/N): ", .{ .default = true }))
                         result = if (try p.promptCheck(
                             gpa,
-                            "Want to re-experience? (y/n): ",
+                            "Want to re-experience? (y/N): ",
+                            .{ .default = true },
                         )) .repeat else .completed;
                     break :blk result.?;
                 };

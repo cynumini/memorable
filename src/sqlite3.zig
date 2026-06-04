@@ -60,7 +60,16 @@ pub const SQLite3 = opaque {
         inline for (args, 0..) |arg, i| {
             statement.bind(i + 1, arg);
         }
-        std.debug.assert(statement.step() == .done);
+        var code = statement.step();
+        var warn: bool = false;
+        while (code != .done) {
+            std.debug.assert(code == .busy);
+            if (!warn) {
+                std.log.warn("Database is busy.", .{});
+                warn = true;
+            }
+            code = statement.step();
+        }
     }
 
     pub fn fetchOne(self: *SQLite3, T: type, sql: [:0]const u8, args: anytype) T {
@@ -222,6 +231,7 @@ pub const Statement = opaque {
 
 const ResultCode = enum(c_int) {
     ok = 0,
+    busy = 5,
     row = 100,
     done = 101,
 

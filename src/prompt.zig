@@ -223,12 +223,19 @@ test textToISODate {
     try std.testing.expectEqualStrings("2011-11-11", test4.?);
 }
 
-pub fn promptCheck(allocator: std.mem.Allocator, message: [:0]const u8) !bool {
+pub fn promptCheck(allocator: std.mem.Allocator, message: [:0]const u8, options: struct {
+    default: bool = false,
+    default_value: bool = false,
+}) !bool {
     rl.bindKey('\t', rl.insert);
     while (true) {
         const string = try rl.readline(allocator, message);
         defer allocator.free(string);
-        if (string.len < 0) continue;
+        if (string.len < 1) {
+            if (options.default) {
+                return options.default_value;
+            }
+        }
         const r = string[0];
         if (r == 'y' or r == 'Y') {
             return true;
