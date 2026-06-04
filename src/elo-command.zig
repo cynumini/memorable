@@ -1,6 +1,6 @@
 const std = @import("std");
 const cast = std.math.lossyCast;
-const Elo = @import("elo.zig");
+const Elo = @import("sakana").Elo;
 
 const clap = @import("clap");
 
@@ -223,7 +223,6 @@ fn play(
         0,
     );
     defer init.gpa.free(sql);
-    std.debug.print("{s}\n", .{sql});
 
     var elo = try Elo.init(init.gpa, init.io, try database.fetchMany(
         init.gpa,

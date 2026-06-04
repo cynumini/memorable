@@ -8,6 +8,7 @@
             .hash = "clap-0.12.0-oBajB7foAQDqlSwaSG5g0yq7xGbQARUsBk5T64gAOqP5",
             .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.12.0.tar.gz",
         },
+        .sakana = .{ .path = "sakana" },
     },
     .fingerprint = 0xb0673a7df8239dc0,
 }

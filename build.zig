@@ -4,6 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const clap = b.dependency("clap", .{});
+    const sakana = b.dependency("sakana", .{});
     const exe = b.addExecutable(.{
         .name = "omoshiroi",
         .root_module = b.createModule(.{
@@ -13,6 +14,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
             .imports = &.{
                 .{ .name = "clap", .module = clap.module("clap") },
+                .{ .name = "sakana", .module = sakana.module("sakana") },
             },
         }),
     });
